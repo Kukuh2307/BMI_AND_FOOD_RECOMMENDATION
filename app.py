@@ -66,7 +66,7 @@ def rekomendasi_makanan(kategori_bmi, kalori_harian, pantangan=None):
     # Filter berdasarkan pantangan diet
     if pantangan:
         for item in pantangan:
-            filtered_df = filtered_df[~filtered_df['FoodGroup   '].str.contains(item, na=False)]
+            filtered_df = filtered_df[~filtered_df['FoodGroup'].str.contains(item, na=False)]
 
     # Sesuaikan rekomendasi berdasarkan kategori BMI
     if kategori_bmi == 'Underweight':
