@@ -66,7 +66,7 @@ def rekomendasi_makanan(kategori_bmi, kalori_harian, pantangan=None):
     # Filter berdasarkan pantangan diet
     if pantangan:
         for item in pantangan:
-            filtered_df = filtered_df[~filtered_df['KelompokMakanan'].str.contains(item, na=False)]
+            filtered_df = filtered_df[~filtered_df['FoodGroup   '].str.contains(item, na=False)]
 
     # Sesuaikan rekomendasi berdasarkan kategori BMI
     if kategori_bmi == 'Underweight':
@@ -93,7 +93,7 @@ jenis_kelamin = st.selectbox("Jenis Kelamin", options=["Laki-laki (L)", "Perempu
 tingkat_aktivitas = st.selectbox("Tingkat Aktivitas", options=[
     'Sedentary', 'Light', 'Moderate', 'Active', 'Very active'], index=0)
 pantangan = st.multiselect("Pantangan Makanan (opsional)", options=[
-    "Susu", "Gluten", "Kacang", "Makanan Laut", "Telur"])
+    "Dairy", "Gluten", "Nuts", "Seafood", "Eggs"    ])
 
 # Tombol untuk prediksi
 if st.button("Hitung dan Rekomendasikan"):
