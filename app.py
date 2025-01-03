@@ -6,73 +6,56 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-# Function to prepare and train the model
-# def train_food_recommendation_model():
-#     try:
-#         # Load and prepare dataset
-#         df = pd.read_csv("combined_nutrition_dataset.csv")
+def predict_bmi_category(weight, height, gender):
+    try:
+        # Calculate BMI first
+        height_m = height / 100
+        bmi = weight / (height_m ** 2)
         
-#         # Define features
-#         features = ['Energy_kcal', 'Protein_g', 'Fat_g', 'Carb_g', 'Fiber_g', 'VitC_mg', 'Calcium_mg']
+        # Load model
+        with open("bmi_classification_model.pkl", "rb") as file:
+            bmi_model = pickle.load(file)
+            
+        # Prepare input features
+        input_features = pd.DataFrame([[1 if gender.lower() == 'l' else 0, height, weight]], 
+                                    columns=['Gender', 'Height', 'Weight'])
         
-#         # Handle missing values
-#         df[features] = df[features].fillna(df[features].mean())
+        # Make prediction using model's predict method
+        prediction = int(bmi_model.predict(input_features)[0])
         
-#         # Create feature matrix X
-#         X = df[features].copy()  # Explicitly create X
+        # Map prediction to category
+        bmi_categories = {
+            1: 'Underweight',
+            2: 'Normal',
+            3: 'Overweight',
+            4: 'Obese'
+        }
         
-#         # Create nutritional score
-#         df['nutritional_score'] = (
-#             df['Protein_g'] / df['Energy_kcal'].replace(0, 1) * 100 +
-#             df['Fiber_g'] * 2 +
-#             df['VitC_mg'] / 60 +
-#             df['Calcium_mg'] / 1000
-#         )
+        category = bmi_categories.get(prediction, 'Unknown')
+        return category, round(bmi, 2)
+    
+    except Exception as e:
+        print(f"Detailed error: {e}")  # For debugging
+        # Fallback to basic BMI calculation if model fails
+        height_m = height / 100
+        bmi = weight / (height_m ** 2)
         
-#         # Handle any NaN in nutritional score
-#         df['nutritional_score'] = df['nutritional_score'].fillna(0)
-        
-#         # Create categories and target variable y
-#         df['category'] = pd.qcut(df['nutritional_score'], q=5, labels=['Very Low', 'Low', 'Medium', 'High', 'Very High'])
-#         y = df['category']
-        
-#         # Split data
-#         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        
-#         # Scale features
-#         scaler = StandardScaler()
-#         X_train_scaled = scaler.fit_transform(X_train)
-#         X_test_scaled = scaler.transform(X_test)
-        
-#         # Train model
-#         model = RandomForestClassifier(n_estimators=100, random_state=42)
-#         model.fit(X_train_scaled, y_train)
-        
-#         # Save model and scaler
-#         with open("food_recommendation_model.pkl", "wb") as file:
-#             pickle.dump((model, scaler), file)
-        
-#         return model, scaler
-        
-#     except Exception as e:
-#         st.error(f"Error in training model: {str(e)}")
-#         print(f"Error details: {e}")
-#         return None, None
+        if bmi < 18.5:
+            category = 'Underweight'
+        elif 18.5 <= bmi < 25:
+            category = 'Normal'
+        elif 25 <= bmi < 30:
+            category = 'Overweight'    
+        else:
+            category = 'Obese'
+            
+        return category, round(bmi, 2)
 
-# Function to calculate BMI and nutritional needs
 def calculate_bmi_and_needs(weight, height, age, gender, activity_level):
     height_m = height / 100
-    bmi = weight / (height_m ** 2)
     
-    # Determine BMI category
-    if bmi < 18.5:
-        bmi_category = 'Underweight'
-    elif 18.5 <= bmi < 25:
-        bmi_category = 'Normal'
-    elif 25 <= bmi < 30:
-        bmi_category = 'Overweight'    
-    else:
-        bmi_category = 'Obese'
+    # Get BMI category from model
+    bmi_category, bmi = predict_bmi_category(weight, height, gender)
     
     # Calculate BMR
     if gender.lower() == 'l':
@@ -96,7 +79,7 @@ def calculate_bmi_and_needs(weight, height, age, gender, activity_level):
     carb_needs = (daily_calories * 0.55) / 4
     
     return {
-        'BMI': round(bmi, 2),
+        'BMI': bmi,
         'Category': bmi_category,
         'Daily Calories (kcal)': round(daily_calories),
         'Protein (g)': round(protein_needs),
@@ -104,7 +87,7 @@ def calculate_bmi_and_needs(weight, height, age, gender, activity_level):
         'Carbohydrate (g)': round(carb_needs)
     }
 
-# Function to recommend food based on nutritional needs
+# [Rest of the code remains unchanged - recommend_food function and main function stay the same]
 def recommend_food(nutritional_needs, model, scaler, restrictions=None):
     try:
         # Load dataset
@@ -180,19 +163,16 @@ def recommend_food(nutritional_needs, model, scaler, restrictions=None):
         print(f"Error details: {e}")
         return None
 
-
-# Main Streamlit UI
 def main():
     st.title("BMI Calculator and Food Recommendation System")
     
-    # Try to load the model, train if not exists
+    # Try to load the food recommendation model
     try:
         with open("food_recommendation_model.pkl", "rb") as file:
             model, scaler = pickle.load(file)
     except FileNotFoundError:
-        st.info("Training model for first use...")
-        # model, scaler = train_food_recommendation_model()
-        st.success("Model training completed!")
+        st.error("Food recommendation model not found!")
+        return
     
     # User inputs
     weight = st.number_input("Weight (kg)", min_value=1, max_value=300, value=70)
