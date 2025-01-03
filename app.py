@@ -110,10 +110,14 @@ def recommend_food(nutritional_needs, model, scaler, restrictions=None):
         # Load dataset
         df = pd.read_csv("combined_nutrition_dataset.csv")
         
-        # Handle missing values
+        # Handle missing values for numerical features
         features = ['Energy_kcal', 'Protein_g', 'Fat_g', 'Carb_g', 'Fiber_g', 'VitC_mg', 'Calcium_mg']
         df[features] = df[features].fillna(df[features].mean())
-        
+
+        # Handle missing values for text features
+        df['Descrip'] = df['Descrip'].fillna("Tidak Diketahui")
+        df['FoodGroup'] = df['FoodGroup'].fillna("Tidak Diketahui")
+
         # Filter based on BMI category
         bmi_category = nutritional_needs['Category']
         
@@ -124,7 +128,7 @@ def recommend_food(nutritional_needs, model, scaler, restrictions=None):
                 (df['Protein_g'] / nutritional_needs['Protein (g)']) * 0.4 +
                 (df['Carb_g'] / nutritional_needs['Carbohydrate (g)']) * 0.2
             )
-        elif bmi_category == 'Overweight' or bmi_category == 'Obese':
+        elif bmi_category in ['Overweight', 'Obese']:
             df['category_score'] = (
                 (1 - abs(df['Energy_kcal'] - nutritional_needs['Daily Calories (kcal)']) / nutritional_needs['Daily Calories (kcal)']) * 0.3 +
                 (df['Protein_g'] / nutritional_needs['Protein (g)']) * 0.4 +
@@ -144,7 +148,6 @@ def recommend_food(nutritional_needs, model, scaler, restrictions=None):
         
         # Prepare features for model prediction
         X = df[features]
-        X = X.fillna(X.mean())
         X_scaled = scaler.transform(X)
         
         # Get model predictions and probabilities
@@ -154,11 +157,14 @@ def recommend_food(nutritional_needs, model, scaler, restrictions=None):
         # Calculate final score combining model prediction and category-based score
         df['final_score'] = (df['model_score'] * 0.5) + (df['category_score'] * 0.5)
         
+        # Filter out rows where 'Descrip' or 'FoodGroup' is "Tidak Diketahui"
+        df = df[(df['Descrip'] != "Tidak Diketahui") & (df['FoodGroup'] != "Tidak Diketahui")]
+        
         # Get top 20 recommendations based on final score
         top_20 = df.nlargest(20, 'final_score')
         
         # Randomly select 5 from top 20
-        recommendations = top_20.sample(n=5)
+        recommendations = top_20.sample(n=5, random_state=None)
         
         # Calculate accuracy score for each recommendation
         accuracy_scores = recommendations['final_score'] * 100
@@ -173,6 +179,7 @@ def recommend_food(nutritional_needs, model, scaler, restrictions=None):
         st.error(f"Error in food recommendation: {str(e)}")
         print(f"Error details: {e}")
         return None
+
 
 # Main Streamlit UI
 def main():
