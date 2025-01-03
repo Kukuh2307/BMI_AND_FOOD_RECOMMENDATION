@@ -2,117 +2,223 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import pickle
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 
-# Load dataset dan model yang telah disimpan
-with open("food_group_model.pkl", "rb") as file:
-    model = pickle.load(file)
+# Function to prepare and train the model
+# def train_food_recommendation_model():
+#     try:
+#         # Load and prepare dataset
+#         df = pd.read_csv("combined_nutrition_dataset.csv")
+        
+#         # Define features
+#         features = ['Energy_kcal', 'Protein_g', 'Fat_g', 'Carb_g', 'Fiber_g', 'VitC_mg', 'Calcium_mg']
+        
+#         # Handle missing values
+#         df[features] = df[features].fillna(df[features].mean())
+        
+#         # Create feature matrix X
+#         X = df[features].copy()  # Explicitly create X
+        
+#         # Create nutritional score
+#         df['nutritional_score'] = (
+#             df['Protein_g'] / df['Energy_kcal'].replace(0, 1) * 100 +
+#             df['Fiber_g'] * 2 +
+#             df['VitC_mg'] / 60 +
+#             df['Calcium_mg'] / 1000
+#         )
+        
+#         # Handle any NaN in nutritional score
+#         df['nutritional_score'] = df['nutritional_score'].fillna(0)
+        
+#         # Create categories and target variable y
+#         df['category'] = pd.qcut(df['nutritional_score'], q=5, labels=['Very Low', 'Low', 'Medium', 'High', 'Very High'])
+#         y = df['category']
+        
+#         # Split data
+#         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        
+#         # Scale features
+#         scaler = StandardScaler()
+#         X_train_scaled = scaler.fit_transform(X_train)
+#         X_test_scaled = scaler.transform(X_test)
+        
+#         # Train model
+#         model = RandomForestClassifier(n_estimators=100, random_state=42)
+#         model.fit(X_train_scaled, y_train)
+        
+#         # Save model and scaler
+#         with open("food_recommendation_model.pkl", "wb") as file:
+#             pickle.dump((model, scaler), file)
+        
+#         return model, scaler
+        
+#     except Exception as e:
+#         st.error(f"Error in training model: {str(e)}")
+#         print(f"Error details: {e}")
+#         return None, None
 
-# Fungsi untuk menghitung BMI dan kebutuhan nutrisi
-def hitung_bmi_dan_kebutuhan(berat, tinggi, usia, jenis_kelamin, tingkat_aktivitas):
-    tinggi_m = tinggi / 100
-    bmi = berat / (tinggi_m ** 2)
-
-    # Tentukan kategori BMI
+# Function to calculate BMI and nutritional needs
+def calculate_bmi_and_needs(weight, height, age, gender, activity_level):
+    height_m = height / 100
+    bmi = weight / (height_m ** 2)
+    
+    # Determine BMI category
     if bmi < 18.5:
-        kategori_bmi = 'Underweight'
+        bmi_category = 'Underweight'
     elif 18.5 <= bmi < 25:
-        kategori_bmi = 'Normal'
+        bmi_category = 'Normal'
     elif 25 <= bmi < 30:
-        kategori_bmi = 'Overweight'    
+        bmi_category = 'Overweight'    
     else:
-        kategori_bmi = 'Obesitas'
-
-    # Hitung BMR (Tingkat Metabolisme Basal)
-    if jenis_kelamin.lower() == 'l':  # 'l' untuk laki-laki
-        bmr = 88.362 + (13.397 * berat) + (4.799 * tinggi) - (5.677 * usia)
-    else:  # 'p' untuk perempuan
-        bmr = 447.593 + (9.247 * berat) + (3.098 * tinggi) - (4.330 * usia)
-
-    # Faktor aktivitas
-    faktor_aktivitas = {
+        bmi_category = 'Obese'
+    
+    # Calculate BMR
+    if gender.lower() == 'l':
+        bmr = 88.362 + (13.397 * weight) + (4.799 * height) - (5.677 * age)
+    else:
+        bmr = 447.593 + (9.247 * weight) + (3.098 * height) - (4.330 * age)
+    
+    # Activity factor
+    activity_factors = {
         'Sedentary': 1.2,
         'Light': 1.375,
         'Moderate': 1.55,
         'Active': 1.725,
         'Very active': 1.9
     }
-
-    # Hitung kebutuhan kalori harian
-    kalori_harian = bmr * faktor_aktivitas[tingkat_aktivitas]
-    kebutuhan_protein = berat * 0.8  # 0.8g per kg berat badan
-    kebutuhan_lemak = (kalori_harian * 0.25) / 9  # 25% dari kalori untuk lemak
-    kebutuhan_karbohidrat = (kalori_harian * 0.55) / 4  # 55% dari kalori untuk karbohidrat
-
+    
+    # Calculate daily needs
+    daily_calories = bmr * activity_factors[activity_level]
+    protein_needs = weight * 0.8
+    fat_needs = (daily_calories * 0.25) / 9
+    carb_needs = (daily_calories * 0.55) / 4
+    
     return {
         'BMI': round(bmi, 2),
-        'Kategori': kategori_bmi,
-        'Kalori Harian (kcal)': round(kalori_harian),
-        'Protein (g)': round(kebutuhan_protein),
-        'Lemak (g)': round(kebutuhan_lemak),
-        'Karbohidrat (g)': round(kebutuhan_karbohidrat)
+        'Category': bmi_category,
+        'Daily Calories (kcal)': round(daily_calories),
+        'Protein (g)': round(protein_needs),
+        'Fat (g)': round(fat_needs),
+        'Carbohydrate (g)': round(carb_needs)
     }
 
-# Fungsi untuk rekomendasi makanan
-def rekomendasi_makanan(kategori_bmi, kalori_harian, pantangan=None):
-    df = pd.read_csv("combined_nutrition_dataset.csv")  # Load dataset gabungan
-    filtered_df = df.copy()
+# Function to recommend food based on nutritional needs
+def recommend_food(nutritional_needs, model, scaler, restrictions=None):
+    try:
+        # Load dataset
+        df = pd.read_csv("combined_nutrition_dataset.csv")
+        
+        # Handle missing values
+        features = ['Energy_kcal', 'Protein_g', 'Fat_g', 'Carb_g', 'Fiber_g', 'VitC_mg', 'Calcium_mg']
+        df[features] = df[features].fillna(df[features].mean())
+        
+        # Filter based on BMI category
+        bmi_category = nutritional_needs['Category']
+        
+        # Adjust scoring based on BMI category
+        if bmi_category == 'Underweight':
+            df['category_score'] = (
+                (df['Energy_kcal'] / nutritional_needs['Daily Calories (kcal)']) * 0.4 +
+                (df['Protein_g'] / nutritional_needs['Protein (g)']) * 0.4 +
+                (df['Carb_g'] / nutritional_needs['Carbohydrate (g)']) * 0.2
+            )
+        elif bmi_category == 'Overweight' or bmi_category == 'Obese':
+            df['category_score'] = (
+                (1 - abs(df['Energy_kcal'] - nutritional_needs['Daily Calories (kcal)']) / nutritional_needs['Daily Calories (kcal)']) * 0.3 +
+                (df['Protein_g'] / nutritional_needs['Protein (g)']) * 0.4 +
+                (df['Fiber_g'] / df['Carb_g']) * 0.3
+            )
+        else:  # Normal
+            df['category_score'] = (
+                (1 - abs(df['Energy_kcal'] - nutritional_needs['Daily Calories (kcal)']) / nutritional_needs['Daily Calories (kcal)']) * 0.4 +
+                (1 - abs(df['Protein_g'] - nutritional_needs['Protein (g)']) / nutritional_needs['Protein (g)']) * 0.3 +
+                (1 - abs(df['Carb_g'] - nutritional_needs['Carbohydrate (g)']) / nutritional_needs['Carbohydrate (g)']) * 0.3
+            )
+        
+        # Handle dietary restrictions
+        if restrictions:
+            for restriction in restrictions:
+                df = df[~df['FoodGroup'].str.contains(restriction, na=False)]
+        
+        # Prepare features for model prediction
+        X = df[features]
+        X = X.fillna(X.mean())
+        X_scaled = scaler.transform(X)
+        
+        # Get model predictions and probabilities
+        predictions = model.predict_proba(X_scaled)
+        df['model_score'] = predictions[:, -1]  # Probability of highest category
+        
+        # Calculate final score combining model prediction and category-based score
+        df['final_score'] = (df['model_score'] * 0.5) + (df['category_score'] * 0.5)
+        
+        # Get top 20 recommendations based on final score
+        top_20 = df.nlargest(20, 'final_score')
+        
+        # Randomly select 5 from top 20
+        recommendations = top_20.sample(n=5)
+        
+        # Calculate accuracy score for each recommendation
+        accuracy_scores = recommendations['final_score'] * 100
+        
+        # Add accuracy score to the output
+        result = recommendations[['Descrip', 'FoodGroup', 'Energy_kcal', 'Protein_g', 'Fat_g', 'Carb_g', 'Fiber_g']].copy()
+        result['Accuracy'] = accuracy_scores.round(2).astype(str) + '%'
+        
+        return result
+        
+    except Exception as e:
+        st.error(f"Error in food recommendation: {str(e)}")
+        print(f"Error details: {e}")
+        return None
+
+# Main Streamlit UI
+def main():
+    st.title("BMI Calculator and Food Recommendation System")
     
-    kolom_serat = 'Fiber_g'
-    kolom_vitamin_c = 'VitC_mg' 
-    kolom_kalsium = 'Calcium_mg'
-    kolom_kalori = 'Energy_kcal'
-    kolom_protein = 'Protein_g'
+    # Try to load the model, train if not exists
+    try:
+        with open("food_recommendation_model.pkl", "rb") as file:
+            model, scaler = pickle.load(file)
+    except FileNotFoundError:
+        st.info("Training model for first use...")
+        # model, scaler = train_food_recommendation_model()
+        st.success("Model training completed!")
+    
+    # User inputs
+    weight = st.number_input("Weight (kg)", min_value=1, max_value=300, value=70)
+    height = st.number_input("Height (cm)", min_value=50, max_value=250, value=170)
+    age = st.number_input("Age (years)", min_value=1, max_value=120, value=30)
+    gender = st.selectbox("Gender", options=["Male (L)", "Female (P)"], index=0)
+    activity_level = st.selectbox("Activity Level", 
+                                options=['Sedentary', 'Light', 'Moderate', 'Active', 'Very active'],
+                                index=0)
+    restrictions = st.multiselect("Dietary Restrictions", 
+                                options=["Dairy", "Gluten", "Nuts", "Seafood", "Eggs"])
+    
+    if st.button("Calculate and Recommend"):
+        # Calculate nutritional needs
+        needs = calculate_bmi_and_needs(weight, height, age, gender[0].lower(), activity_level)
+        
+        # Display BMI and nutritional needs
+        st.subheader("BMI and Nutritional Needs")
+        col1, col2, col3 = st.columns(3)
+        
+        col1.metric("BMI", needs['BMI'])
+        col2.metric("Category", needs['Category'])
+        col3.metric("Daily Calories", f"{needs['Daily Calories (kcal)']} kcal")
+        
+        st.write("**Detailed Nutritional Needs:**")
+        st.write(f"- **Protein:** {needs['Protein (g)']} g")
+        st.write(f"- **Fat:** {needs['Fat (g)']} g")
+        st.write(f"- **Carbohydrate:** {needs['Carbohydrate (g)']} g")
+        
+        # Get and display food recommendations
+        st.subheader("Food Recommendations")
+        recommendations = recommend_food(needs, model, scaler, restrictions)
+        st.table(recommendations)
 
-    # Filter berdasarkan pantangan diet
-    if pantangan:
-        for item in pantangan:
-            filtered_df = filtered_df[~filtered_df['FoodGroup'].str.contains(item, na=False)]
-
-    # Sesuaikan rekomendasi berdasarkan kategori BMI
-    if kategori_bmi == 'Underweight':
-        filtered_df['skor'] = (filtered_df[kolom_kalori] / 500 + filtered_df[kolom_protein] / 20)
-    elif kategori_bmi in ['Overweight', 'O  besitas']:
-        filtered_df['skor'] = (filtered_df[kolom_protein] / 20 + filtered_df[kolom_serat] / 10 - filtered_df[kolom_kalori] / 1000)
-    else:
-        filtered_df['skor'] = (filtered_df[kolom_protein] / 20 + filtered_df[kolom_serat] / 10 + filtered_df[kolom_vitamin_c] / 60 + filtered_df[kolom_kalsium] / 1000) / 4
-
-    # Pilih 5 rekomendasi terbaik
-    rekomendasi = filtered_df.nlargest(5, 'skor')
-    return rekomendasi[['Descrip', 'FoodGroup', 'Energy_kcal', 'Protein_g', 'Fat_g', 'Carb_g', 'Fiber_g']]
-
-    # return rekomendasi[['Deskripsi', 'KelompokMakanan', 'Kalori', 'Protein', 'Lemak', 'Karbohidrat', 'Serat']]
-
-# Streamlit UI
-st.title("Kalkulator BMI dan Rekomendasi Makanan")
-
-# Input data pengguna
-berat = st.number_input("Berat Badan (kg)", min_value=1, max_value=300, value=70)
-tinggi = st.number_input("Tinggi Badan (cm)", min_value=50, max_value=250, value=170)
-usia = st.number_input("Usia (tahun)", min_value=1, max_value=120, value=30)
-jenis_kelamin = st.selectbox("Jenis Kelamin", options=["Laki-laki (L)", "Perempuan (P)"], index=0)
-tingkat_aktivitas = st.selectbox("Tingkat Aktivitas", options=[
-    'Sedentary', 'Light', 'Moderate', 'Active', 'Very active'], index=0)
-pantangan = st.multiselect("Pantangan Makanan (opsional)", options=[
-    "Dairy", "Gluten", "Nuts", "Seafood", "Eggs"    ])
-
-# Tombol untuk prediksi
-if st.button("Hitung dan Rekomendasikan"):
-    hasil = hitung_bmi_dan_kebutuhan(berat, tinggi, usia, jenis_kelamin[0].lower(), tingkat_aktivitas)
-
-    # Tampilkan hasil BMI dan kebutuhan nutrisi
-    st.subheader("Hasil BMI dan Kebutuhan Nutrisi")
-    col1, col2, col3 = st.columns(3)
-
-    col1.metric("BMI", hasil['BMI'])
-    col2.metric("Kategori", hasil['Kategori'])
-    col3.metric("Kalori Harian", f"{hasil['Kalori Harian (kcal)']} kcal")
-
-    st.write("**Rincian Kebutuhan Nutrisi:**")
-    st.write(f"- **Protein:** {hasil['Protein (g)']} g")
-    st.write(f"- **Lemak:** {hasil['Lemak (g)']} g")
-    st.write(f"- **Karbohidrat:** {hasil['Karbohidrat (g)']} g")
-
-    # Tampilkan rekomendasi makanan
-    st.subheader("Rekomendasi Makanan")
-    rekomendasi = rekomendasi_makanan(hasil['Kategori'], hasil['Kalori Harian (kcal)'], pantangan)
-    st.table(rekomendasi)
+if __name__ == "__main__":
+    main()
